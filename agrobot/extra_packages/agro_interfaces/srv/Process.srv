@@ -1,0 +1,6 @@
+# x, y, z coordinates of the target
+float64 target_x
+float64 target_y
+float64 target_z
+---
+bool finished
