@@ -20,7 +20,6 @@
 #define BAUD_RATE 6000000
 #define CALLBACK_TOTAL 1
 
-// micro-ROS objects
 static rclc_support_t support;
 static rcl_allocator_t allocator;
 static rcl_node_t node;
@@ -29,7 +28,6 @@ static rcl_service_t service;
 static agro_interfaces__srv__Process_Response process_resp;
 static agro_interfaces__srv__Process_Request process_req;
 
-// states for state machine in loop function
 enum states {
   WAITING_AGENT,
   AGENT_AVAILABLE,
@@ -37,7 +35,6 @@ enum states {
   AGENT_DISCONNECTED
 } static state;
 
-// responds to errors with micro-ROS functions
 static void error_loop() {
   while (1) {
     delay(100);
@@ -63,6 +60,7 @@ void process_srv_callback(const void *request_msg, void *response_msg) {
   res_in->finished = true;
 }
 
+// Creates micro-ROS entities
 bool create_entities() {
   allocator = rcl_get_default_allocator();
   RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
@@ -83,6 +81,7 @@ bool create_entities() {
   return true;
 }
 
+// Destroys micro-ROS entities
 void destroy_entities() {
   rmw_context_t *rmw_context = rcl_context_get_rmw_context(&support.context);
   (void)rmw_uros_set_context_entity_destroy_session_timeout(rmw_context, 0);
@@ -97,9 +96,9 @@ void setup() {
   Serial.begin(BAUD_RATE);
   set_microros_serial_transports(Serial);
 
-  ////////////////////////////////////////
+  ////////////////////////////////////////////////////////////
   // ADD MOTOR INIT CODE HERE
-  ////////////////////////////////////////
+  ////////////////////////////////////////////////////////////
 
   ////////////////////////////////////////
   // END MOTOR INIT CODE HERE
@@ -109,7 +108,7 @@ void setup() {
 }
 
 void loop() {
-  // state machine to manage connecting and disconnecting the micro-ROS agent
+  // State machine to manage connecting and disconnecting the micro-ROS agent
   switch (state) {
   case WAITING_AGENT:
     EXECUTE_EVERY_N_MS(500, state = (RMW_RET_OK == rmw_uros_ping_agent(100, 1))
