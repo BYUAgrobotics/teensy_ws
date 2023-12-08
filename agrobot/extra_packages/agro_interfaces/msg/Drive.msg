@@ -1,4 +1,4 @@
-int32 fl_motor
-int32 fr_motor
-int32 bl_motor
-int32 br_motor
+float64 fl_motor
+float64 fr_motor
+float64 bl_motor
+float64 br_motor
