@@ -1,20 +1,25 @@
 #include <Arduino.h>
 #include <agro_interfaces/srv/process.h>
+#include <agro_interfaces/msg/sensors.h>
 #include <micro_ros_platformio.h>
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
 
-#define EXECUTE_EVERY_N_MS(MS, X)                                              \
-  do {                                                                         \
-    static volatile int64_t init = -1;                                         \
-    if (init == -1) {                                                          \
-      init = uxr_millis();                                                     \
-    }                                                                          \
-    if (uxr_millis() - init > MS) {                                            \
-      X;                                                                       \
-      init = uxr_millis();                                                     \
-    }                                                                          \
+#define LED_PIN 13
+#define EXECUTE_EVERY_N_MS(MS, X)      \
+  do                                   \
+  {                                    \
+    static volatile int64_t init = -1; \
+    if (init == -1)                    \
+    {                                  \
+      init = uxr_millis();             \
+    }                                  \
+    if (uxr_millis() - init > MS)      \
+    {                                  \
+      X;                               \
+      init = uxr_millis();             \
+    }                                  \
   } while (0)
 
 #define BAUD_RATE 6000000
@@ -27,21 +32,46 @@ static rclc_executor_t executor;
 static rcl_service_t service;
 static agro_interfaces__srv__Process_Response process_resp;
 static agro_interfaces__srv__Process_Request process_req;
+rcl_publisher_t publisher;
+const char *topic_name = "distanceSensors";
 
-enum states {
+#define RCCHECK(fn)              \
+  {                              \
+    rcl_ret_t temp_rc = fn;      \
+    if ((temp_rc != RCL_RET_OK)) \
+    {                            \
+      error_loop();              \
+    }                            \
+  }
+#define RCSOFTCHECK(fn)          \
+  {                              \
+    rcl_ret_t temp_rc = fn;      \
+    if ((temp_rc != RCL_RET_OK)) \
+    {                            \
+    }                            \
+  }
+
+void error_loop()
+{
+  while (1)
+  {
+    digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+    delay(100);
+  }
+}
+
+enum states
+{
   WAITING_AGENT,
   AGENT_AVAILABLE,
   AGENT_CONNECTED,
   AGENT_DISCONNECTED
 } static state;
 
-static void error_loop() {
-  while (1) {
-    delay(100);
-  }
-}
-
-void process_srv_callback(const void *request_msg, void *response_msg) {
+void process_srv_callback(const void *request_msg, void *response_msg)
+{
+  agro_interfaces__srv__Process_Request *req_in =
+      (agro_interfaces__srv__Process_Request *)request_msg;
   agro_interfaces__srv__Process_Response *res_in =
       (agro_interfaces__srv__Process_Response *)response_msg;
 
@@ -49,9 +79,9 @@ void process_srv_callback(const void *request_msg, void *response_msg) {
   // ADD CODE HERE TO EXECUTE WHEN A SERVICE IS REQUESTED
   ////////////////////////////////////////////////////////////
 
-  x = request_msg->target_x;
-  y = request_msg->target_y;
-  z = request_msg->target_z;
+  double x = req_in->target_x;
+  double y = req_in->target_y;
+  double z = req_in->target_z;
 
   ////////////////////////////////////////////////////////////
   // END CODE HERE TO EXECUTE WHEN A SERVICE IS REQUESTED
@@ -60,8 +90,19 @@ void process_srv_callback(const void *request_msg, void *response_msg) {
   res_in->finished = true;
 }
 
+void sendSensorInformation()
+{
+  agro_interfaces__msg__Sensors msg;
+  msg.right_back = 100;
+  msg.right_front = 200;
+  msg.front_left = 300;
+  msg.front_right = 400;
+  rcl_publish(&publisher, &msg, NULL);
+}
+
 // Creates micro-ROS entities
-bool create_entities() {
+bool create_entities()
+{
   allocator = rcl_get_default_allocator();
   RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
   RCCHECK(
@@ -71,6 +112,12 @@ bool create_entities() {
   RCCHECK(rclc_service_init_best_effort(
       &service, &node,
       ROSIDL_GET_SRV_TYPE_SUPPORT(agro_interfaces, srv, Process), "process"));
+
+  const rosidl_message_type_support_t *type_support =
+      ROSIDL_GET_MSG_TYPE_SUPPORT(agro_interfaces, msg, Sensors);
+  rcl_ret_t rc = rclc_publisher_init_best_effort(
+      &publisher, &node,
+      type_support, topic_name);
 
   // create executor
   RCSOFTCHECK(rclc_executor_init(&executor, &support.context, CALLBACK_TOTAL,
@@ -82,17 +129,20 @@ bool create_entities() {
 }
 
 // Destroys micro-ROS entities
-void destroy_entities() {
+void destroy_entities()
+{
   rmw_context_t *rmw_context = rcl_context_get_rmw_context(&support.context);
   (void)rmw_uros_set_context_entity_destroy_session_timeout(rmw_context, 0);
 
   rcl_service_fini(&service, &node);
+  rcl_publisher_fini(&publisher, &node);
   rclc_executor_fini(&executor);
   rcl_node_fini(&node);
   rclc_support_fini(&support);
 }
 
-void setup() {
+void setup()
+{
   Serial.begin(BAUD_RATE);
   set_microros_serial_transports(Serial);
 
@@ -107,9 +157,11 @@ void setup() {
   state = WAITING_AGENT;
 }
 
-void loop() {
+void loop()
+{
   // State machine to manage connecting and disconnecting the micro-ROS agent
-  switch (state) {
+  switch (state)
+  {
   case WAITING_AGENT:
     EXECUTE_EVERY_N_MS(500, state = (RMW_RET_OK == rmw_uros_ping_agent(100, 1))
                                         ? AGENT_AVAILABLE
@@ -118,7 +170,8 @@ void loop() {
 
   case AGENT_AVAILABLE:
     state = (true == create_entities()) ? AGENT_CONNECTED : WAITING_AGENT;
-    if (state == WAITING_AGENT) {
+    if (state == WAITING_AGENT)
+    {
       destroy_entities();
     };
     break;
@@ -128,8 +181,10 @@ void loop() {
                                         ? AGENT_CONNECTED
                                         : AGENT_DISCONNECTED;);
 
-    if (state == AGENT_CONNECTED) {
+    if (state == AGENT_CONNECTED)
+    {
       rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+      sendSensorInformation();
     }
     break;
 
@@ -141,4 +196,6 @@ void loop() {
   default:
     break;
   }
+  // other loopy stuff
+  // EXECUTE_EVERY_N_MS(500, sendSensorInformation);
 }
