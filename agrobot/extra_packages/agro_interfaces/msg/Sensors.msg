@@ -2,3 +2,4 @@ uint16 right_back
 uint16 right_front
 uint16 front_left
 uint16 front_right
+uint16 plant_detection

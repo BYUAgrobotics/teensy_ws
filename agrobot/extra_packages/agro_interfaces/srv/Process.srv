@@ -1,6 +1,8 @@
-# x, y, z coordinates of the target
-float64 target_x
-float64 target_y
-float64 target_z
+uint16 deploy     # absolute location of the deploy mechanism
+uint16 rotation   # absolute location
+uint16 slide      # absolute slide
+uint16 twist      # servo twist (0-180)
+bool pick         # if we are actually picking
+uint16 picker_loc
 ---
 bool finished
